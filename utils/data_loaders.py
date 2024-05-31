@@ -14,6 +14,6 @@ def create_data_loaders(dataset, data_segments, split_rates, batch_size, num_wor
           splitted_data[i],
           batch_size=batch_size,
           shuffle=True,
-          num_workers=num_workers,
+        #   num_workers=num_workers,
           pin_memory=True)
     return dataloader_dict
