@@ -122,7 +122,8 @@ def train(model: torch.nn.Module,
           optimizer: torch.optim.Optimizer,
           loss_fn: torch.nn.Module,
           epochs: int,
-          device: torch.device) -> Dict[str, List]:
+          device: torch.device,
+          writer: torch.utils.tensorboard.writer) -> Dict[str, List]:
     """Trains and tests a PyTorch model.
 
     Passes a target PyTorch models through train_step() and test_step()
@@ -188,6 +189,26 @@ def train(model: torch.nn.Module,
         results["train_acc"].append(train_acc)
         results["test_loss"].append(test_loss)
         results["test_acc"].append(test_acc)
+        
+        ### New: Experiment tracking ###
+        # Add loss results to SummaryWriter
+        writer.add_scalars(main_tag="Loss", 
+                           tag_scalar_dict={"train_loss": train_loss,
+                                            "test_loss": test_loss},
+                           global_step=epoch)
 
+        # Add accuracy results to SummaryWriter
+        writer.add_scalars(main_tag="Accuracy", 
+                           tag_scalar_dict={"train_acc": train_acc,
+                                            "test_acc": test_acc}, 
+                           global_step=epoch)
+        
+        # Track the PyTorch model architecture
+        writer.add_graph(model=model, 
+                         # Pass in an example input
+                         input_to_model=torch.randn(32, 3, 224, 224).to(device))
+    
+    # Close the writer
+    writer.close()
     # Return the filled results at the end of the epochs
     return results
