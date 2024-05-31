@@ -1,9 +1,9 @@
 from tqdm import tqdm
 from functools import partial
-from tqdm import tqdm
 import torch
 from typing import Dict, List, Tuple
 from torch.utils import tensorboard
+from pathlib import Path
 tqdm = partial(tqdm, position=0, leave=True)
 
 def train_step(model: torch.nn.Module,
@@ -69,57 +69,6 @@ def train_step(model: torch.nn.Module,
         count += 1
 
     return avg_train_loss, avg_train_acc
-
-def val_step(model: torch.nn.Module,
-              dataloader: torch.utils.data.DataLoader,
-              loss_fn: torch.nn.Module,
-              device: torch.device) -> Tuple[float, float]:
-    """Validates a PyTorch model for a single epoch.
-
-    Turns a target PyTorch model to "eval" mode and then performs
-    a forward pass on a validation dataset.
-
-    Args:
-        model: A PyTorch model to be validated.
-        dataloader: A DataLoader instance for the model to be validated on.
-        loss_fn: A PyTorch loss function to calculate loss on the validation data.
-        device: A target device to compute on (e.g. "cuda" or "cpu").
-
-    Returns:
-        A tuple of validation loss and validation accuracy metrics.
-        In the form (val_loss, val_accuracy). For example:
-
-        (0.0223, 0.8985)
-    """
-    # Put model in eval mode
-    model.eval()
-
-    # Setup validation loss and validation accuracy values
-    val_loss, val_acc = 0, 0
-
-    # Turn on inference context manager
-    with torch.inference_mode():
-        # Loop through DataLoader batches
-        for batch, (X, y) in enumerate(dataloader):
-            # Send data to target device
-            X, y = X.to(device), y.to(device)
-
-            # 1. Forward pass
-            val_pred_logits = model(X)
-
-            # 2. Calculate and accumulate loss
-            loss = loss_fn(val_pred_logits, y)
-            val_loss += loss.item()
-
-            # Calculate and accumulate accuracy
-            val_pred_labels = val_pred_logits.argmax(dim=1)
-            val_acc += ((val_pred_labels == y).sum().item()/len(val_pred_labels))
-
-
-    # Adjust metrics to get average loss and accuracy per batch
-    val_loss = val_loss / len(dataloader)
-    val_acc = val_acc / len(dataloader)
-    return val_loss, val_acc
 
 def train(model: torch.nn.Module,
           train_dataloader: torch.utils.data.DataLoader,
@@ -215,3 +164,86 @@ def train(model: torch.nn.Module,
     writer.close()
     # Return the filled results at the end of the epochs
     return results
+
+
+def val_step(model: torch.nn.Module,
+              dataloader: torch.utils.data.DataLoader,
+              loss_fn: torch.nn.Module,
+              device: torch.device) -> Tuple[float, float]:
+    """Validates a PyTorch model for a single epoch.
+
+    Turns a target PyTorch model to "eval" mode and then performs
+    a forward pass on a validation dataset.
+
+    Args:
+        model: A PyTorch model to be validated.
+        dataloader: A DataLoader instance for the model to be validated on.
+        loss_fn: A PyTorch loss function to calculate loss on the validation data.
+        device: A target device to compute on (e.g. "cuda" or "cpu").
+
+    Returns:
+        A tuple of validation loss and validation accuracy metrics.
+        In the form (val_loss, val_accuracy). For example:
+
+        (0.0223, 0.8985)
+    """
+    # Put model in eval mode
+    model.eval()
+
+    # Setup validation loss and validation accuracy values
+    val_loss, val_acc = 0, 0
+
+    # Turn on inference context manager
+    with torch.inference_mode():
+        # Loop through DataLoader batches
+        for batch, (X, y) in enumerate(dataloader):
+            # Send data to target device
+            X, y = X.to(device), y.to(device)
+
+            # 1. Forward pass
+            val_pred_logits = model(X)
+
+            # 2. Calculate and accumulate loss
+            loss = loss_fn(val_pred_logits, y)
+            val_loss += loss.item()
+
+            # Calculate and accumulate accuracy
+            val_pred_labels = val_pred_logits.argmax(dim=1)
+            val_acc += ((val_pred_labels == y).sum().item()/len(val_pred_labels))
+
+
+    # Adjust metrics to get average loss and accuracy per batch
+    val_loss = val_loss / len(dataloader)
+    val_acc = val_acc / len(dataloader)
+    return val_loss, val_acc
+
+def save_model(model: torch.nn.Module,
+               target_dir: str,
+               model_name: str):
+    """Saves a PyTorch model to a target directory.
+
+    Args:
+        model: A target PyTorch model to save.
+        target_dir: A directory for saving the model to.
+        model_name: A filename for the saved model. Should include
+        either ".pth" or ".pt" as the file extension.
+
+    Example usage:
+        save_model(model=model_0,
+                target_dir="models",
+                model_name="05_going_modular_tingvgg_model.pth")
+    """
+    # Create target directory
+    target_dir_path = Path(target_dir)
+    target_dir_path.mkdir(parents=True,
+                            exist_ok=True)
+
+    # Create model save path
+    assert model_name.endswith(".pth") or model_name.endswith(".pt"), "model_name should end with '.pt' or '.pth'"
+    model_save_path = target_dir_path / model_name
+
+    # Save the model state_dict()
+    print(f"[INFO] Saving model to: {model_save_path}")
+    torch.save(obj=model.state_dict(),
+                f=model_save_path)
+
