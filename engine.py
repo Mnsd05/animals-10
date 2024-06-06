@@ -1,10 +1,14 @@
 from tqdm import tqdm
 from functools import partial
 import torch
+import torchvision
 from typing import Dict, List, Tuple
 from torch.utils import tensorboard
 from pathlib import Path
-import numpy as numpy
+from utils import create_data_loaders
+import time
+import math
+import os
 from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
 
 tqdm = partial(tqdm, position=0, leave=True)
@@ -281,3 +285,32 @@ def save_model(model: torch.nn.Module,
     torch.save(obj=model.state_dict(),
                 f=model_save_path)
 
+def batchsize_tuning(model: torch.nn.Module,
+               loss_fn: torch.nn.Module,
+               optimizer: torch.optim.Optimizer,
+               dataset: torchvision.datasets.ImageFolder,
+               device: torch.device,
+               writer: torch.utils.tensorboard.writer):
+    batch_size = 8
+    min_time = float('inf')
+    num_workers = os.cpu_count()
+    initial_model_state = model.state_dict()
+    initial_optimizer_state = optimizer.state_dict()
+    while True:
+        dataloader_dict = create_data_loaders(dataset, ["train", "val", "test"], [0.7, 0.15, 0.15], batch_size, num_workers)
+        dataloader = dataloader_dict["val"]
+        start = time.time()
+        train_step(model, dataloader, loss_fn, optimizer, device, 0)
+        end = time.time()
+        time_taken = end - start
+        writer.add_scalar("batch_size_tuning log2", time_taken, math.log2(batch_size))
+        model.load_state_dict(initial_model_state)
+        optimizer.load_state_dict(initial_optimizer_state)
+        print(f"Batch size: {batch_size}, Time taken: {time_taken}")
+        if time_taken < min_time:
+            min_time = time_taken
+            batch_size *= 2
+        else:
+            break
+    return dataloader_dict
+    
