@@ -256,6 +256,9 @@ def train(model: torch.nn.Module,
 
 
 def save_model(model: torch.nn.Module,
+               optimizer, 
+               epoch,
+               history,
                target_dir: str,
                model_name: str):
     """Saves a PyTorch model to a target directory.
@@ -282,8 +285,14 @@ def save_model(model: torch.nn.Module,
 
     # Save the model state_dict()
     print(f"[INFO] Saving model to: {model_save_path}")
-    torch.save(obj=model.state_dict(),
-                f=model_save_path)
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': history["train_loss"],
+        'accuracy': history["train_acc"]
+    },
+    f=model_save_path)
 
 def batchsize_tuning(model: torch.nn.Module,
                loss_fn: torch.nn.Module,
