@@ -19,6 +19,7 @@ class SeparableDepthWiseConv(nn.Module):
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True)
         )
+
     
     def forward(self, x):
         x = self.depthwise(x)
@@ -50,6 +51,8 @@ class MobileNetV1(nn.Module):
             nn.Flatten(),
             nn.Linear(1024, num_classes)
         )
+
+        self.name = "MobileNetV1"
     
     def forward(self, x):
         x = self.features(x)
