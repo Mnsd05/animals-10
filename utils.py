@@ -1,24 +1,36 @@
+
 import torch
-from torch.utils.data import DataLoader, random_split
-from torchvision import datasets
 from torch.utils.tensorboard import SummaryWriter
 import os
+from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
+from sklearn.model_selection import train_test_split
+from collections import Counter
 
-def create_data_loaders(dataset, data_segments, split_rates, batch_size, num_workers):
-    assert(sum(split_rates) == 1), "Split_rates not equals 1"
-    assert(len(split_rates) == len(data_segments)), "Number of split rates and data segments do not match"
+def create_data_loaders(full_dataset, batch_size, num_workers, train_transform, test_transform):
+    # stratify the dataset into train, validation and test sets
+    valtrain_idx, test_idx = train_test_split(list(range(len(full_dataset))), test_size=0.1, 
+                                            random_state=42, stratify=full_dataset.targets)
+    train_idx, val_idx = train_test_split(valtrain_idx, test_size=0.2, random_state=42, 
+                                        stratify=[full_dataset.targets[i] for i in valtrain_idx])
+    train_subset = Subset(full_dataset, train_idx)
+    val_subset = Subset(full_dataset, val_idx)
+    test_subset = Subset(full_dataset, test_idx)
 
-    generator = torch.Generator().manual_seed(42)
-    splitted_data = random_split(dataset, split_rates, generator)
-    dataloader_dict = {}
-    for i in range(len(data_segments)):
-        dataloader_dict[data_segments[i]] = DataLoader(
-          splitted_data[i],
-          batch_size=batch_size,
-          shuffle=True,
-          num_workers=num_workers,
-          pin_memory=True)
-    return dataloader_dict
+    train_subset.dataset.transform = train_transform
+    val_subset.dataset.transform = test_transform
+    test_subset.dataset.transform = test_transform
+
+    train_target = [full_dataset.targets[i] for i in train_idx]
+    class_counts = Counter([target for target in train_target])
+    sample_weights = [1 / class_counts[target] for target in train_target]
+    sampler = WeightedRandomSampler(sample_weights, replacement = True,
+                                    num_samples=int(len(train_target) * 1.5))
+    
+    train_dataloader = DataLoader(train_subset, batch_size=batch_size, sampler = sampler,
+                                num_workers = num_workers, pin_memory=True)
+    val_dataloader = DataLoader(val_subset, batch_size=batch_size, num_workers = num_workers, pin_memory=True)
+    test_dataloader = DataLoader(test_subset, batch_size=batch_size, num_workers = num_workers, pin_memory=True)
+    return train_dataloader, val_dataloader, test_dataloader
 
 def create_writer(experiment_name: str, 
                   model_name: str,

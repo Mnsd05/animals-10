@@ -35,6 +35,7 @@ class Alexnet(nn.Module):
           nn.ReLU(inplace=True),
           nn.Linear(in_features=4096,out_features=num_classes)
       )
+      self.name = "Alexnet"
 
   def forward(self, x: torch.Tensor):
       x = self.classifier(self.features(x))

@@ -70,6 +70,7 @@ class InceptionNet(nn.Module):
             nn.Flatten(),
             nn.Linear(1024, num_classes)
         )
+        self.name = "InceptionNet"
     
     def forward(self, x):
         x = self.features(x)

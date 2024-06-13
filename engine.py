@@ -144,10 +144,11 @@ def train(model: torch.nn.Module,
           test_dataloader: torch.utils.data.DataLoader,
           optimizer: torch.optim.Optimizer,
           loss_fn: torch.nn.Module,
-          epochs: int,
           device: torch.device,
           label_names: List[str],
-          writer: torch.utils.tensorboard.writer) -> Dict[str, List]:
+          writer: torch.utils.tensorboard.writer,
+          epochs: int,
+          history: dict = None) -> Dict[str, List]:
     """Trains and tests a PyTorch model.
 
     Passes a target PyTorch models through train_step() and test_step()
@@ -188,14 +189,22 @@ def train(model: torch.nn.Module,
         "confusion_matrix": []
     }
 
+    early_threshold = 5
+    best_acc = 0
+    best_epoch = 0
+    start_epoch = 1
+    if history is not None:
+        best_acc = history["best_acc"]
+        best_epoch = history["best_epoch"]
+        start_epoch = len(history["train_loss"]) + 1
     # Loop through training and test steps for a number of epochs
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, start_epoch + epochs):
         train_loss, train_acc = train_step(model=model,
                                             dataloader=train_dataloader,
                                             loss_fn=loss_fn,
                                             optimizer=optimizer,
                                             device=device,
-                                            epoch_num=epoch + 1)
+                                            epoch_num=epoch)
         test_loss, test_acc, classification_rep, conf_matrix  = test_step(model=model,
             dataloader=test_dataloader,
             loss_fn=loss_fn,
@@ -204,7 +213,7 @@ def train(model: torch.nn.Module,
 
         # Print out what's happening
         print(
-            f"Epoch {epoch+1}: "
+            f"Epoch {epoch}: "
             f"test_loss: {test_loss:.4f} | "
             f"test_acc: {test_acc:.4f}"
         )
@@ -214,6 +223,8 @@ def train(model: torch.nn.Module,
         results["train_acc"].append(train_acc)
         results["test_loss"].append(test_loss)
         results["test_acc"].append(test_acc)
+        results["best_epoch"] = best_epoch
+        results["best_acc"] = best_acc
         results["classification_report"].append(classification_rep)
         results["confusion_matrix"].append(conf_matrix)
 
@@ -248,6 +259,29 @@ def train(model: torch.nn.Module,
         writer.add_graph(model=model,
                          # Pass in an example input
                          input_to_model=torch.randn(32, 3, 224, 224).to(device))
+        # Save the model at the end of each epoch for fault tolerance
+        save_model(model=model,
+                   optimizer=optimizer,
+                   epoch=epoch,
+                   history=results,
+                   target_dir=os.path.join(DRIVE_PROJECT_PATH, MODEL_FOLDER),
+                   model_name=f"latest_{model.name}.pth")
+        
+        # Save the best model based on test accuracy
+        if test_acc > best_acc:
+            best_acc = test_acc
+            best_epoch = epoch
+            save_model(model=model,
+                   optimizer=optimizer,
+                   epoch=epoch,
+                   history=results,
+                   target_dir=os.path.join(DRIVE_PROJECT_PATH, MODEL_FOLDER),
+                   model_name=f"best_{model.name}.pth")
+        
+        # Early stopping
+        if epoch - best_epoch > early_threshold:
+            print(f"Early stopping at epoch {epoch}")
+            break
 
     # Close the writer
     writer.close()
@@ -256,6 +290,9 @@ def train(model: torch.nn.Module,
 
 
 def save_model(model: torch.nn.Module,
+               optimizer, 
+               epoch,
+               history,
                target_dir: str,
                model_name: str):
     """Saves a PyTorch model to a target directory.
@@ -282,8 +319,14 @@ def save_model(model: torch.nn.Module,
 
     # Save the model state_dict()
     print(f"[INFO] Saving model to: {model_save_path}")
-    torch.save(obj=model.state_dict(),
-                f=model_save_path)
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'best_epoch': history["best_epoch"],
+        'best_acc': history["best_acc"],
+    },
+    f=model_save_path)
 
 def batchsize_tuning(model: torch.nn.Module,
                loss_fn: torch.nn.Module,
