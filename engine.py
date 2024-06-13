@@ -5,13 +5,15 @@ import torchvision
 from typing import Dict, List, Tuple
 from torch.utils import tensorboard
 from pathlib import Path
-from utils import create_data_loaders
+from dataloader import CustomDataLoader
 import time
 import math
 import os
 from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
 
 tqdm = partial(tqdm, position=0, leave=True)
+DRIVE_PROJECT_PATH = "/kaggle/working"
+MODEL_FOLDER = "models"
 
 def train_step(model: torch.nn.Module,
                dataloader: torch.utils.data.DataLoader,
@@ -148,7 +150,7 @@ def train(model: torch.nn.Module,
           label_names: List[str],
           writer: torch.utils.tensorboard.writer,
           epochs: int,
-          history: dict = None) -> Dict[str, List]:
+          checkpoint: dict = None) -> Dict[str, List]:
     """Trains and tests a PyTorch model.
 
     Passes a target PyTorch models through train_step() and test_step()
@@ -181,22 +183,19 @@ def train(model: torch.nn.Module,
                     test_acc: [0.3400, 0.2973]}
     """
     # Create empty results dictionary
-    results = {"train_loss": [],
-        "train_acc": [],
-        "test_loss": [],
-        "test_acc": [],
-        "classification_report": [],
-        "confusion_matrix": []
-    }
-
+    results = {}
     early_threshold = 5
     best_acc = 0
     best_epoch = 0
     start_epoch = 1
-    if history is not None:
-        best_acc = history["best_acc"]
-        best_epoch = history["best_epoch"]
-        start_epoch = len(history["train_loss"]) + 1
+
+    if checkpoint is not None:
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        start_epoch = checkpoint["saved_epoch"] + 1
+        best_epoch = checkpoint["best_epoch"]
+        best_acc = checkpoint["best_acc"]
+
     # Loop through training and test steps for a number of epochs
     for epoch in range(start_epoch, start_epoch + epochs):
         train_loss, train_acc = train_step(model=model,
@@ -219,14 +218,9 @@ def train(model: torch.nn.Module,
         )
 
         # Update results dictionary
-        results["train_loss"].append(train_loss)
-        results["train_acc"].append(train_acc)
-        results["test_loss"].append(test_loss)
-        results["test_acc"].append(test_acc)
         results["best_epoch"] = best_epoch
         results["best_acc"] = best_acc
-        results["classification_report"].append(classification_rep)
-        results["confusion_matrix"].append(conf_matrix)
+        results["saved_epoch"] = epoch
 
         ### New: Experiment tracking ###
         # Add loss results to SummaryWriter
@@ -262,8 +256,7 @@ def train(model: torch.nn.Module,
         # Save the model at the end of each epoch for fault tolerance
         save_model(model=model,
                    optimizer=optimizer,
-                   epoch=epoch,
-                   history=results,
+                   results=results,
                    target_dir=os.path.join(DRIVE_PROJECT_PATH, MODEL_FOLDER),
                    model_name=f"latest_{model.name}.pth")
         
@@ -273,8 +266,7 @@ def train(model: torch.nn.Module,
             best_epoch = epoch
             save_model(model=model,
                    optimizer=optimizer,
-                   epoch=epoch,
-                   history=results,
+                   results=results,
                    target_dir=os.path.join(DRIVE_PROJECT_PATH, MODEL_FOLDER),
                    model_name=f"best_{model.name}.pth")
         
@@ -291,8 +283,7 @@ def train(model: torch.nn.Module,
 
 def save_model(model: torch.nn.Module,
                optimizer, 
-               epoch,
-               history,
+               results: dict,
                target_dir: str,
                model_name: str):
     """Saves a PyTorch model to a target directory.
@@ -320,18 +311,18 @@ def save_model(model: torch.nn.Module,
     # Save the model state_dict()
     print(f"[INFO] Saving model to: {model_save_path}")
     torch.save({
-        'epoch': epoch,
+        'saved_epoch': results["saved_epoch"],
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
-        'best_epoch': history["best_epoch"],
-        'best_acc': history["best_acc"],
+        'best_epoch': results["best_epoch"],
+        'best_acc': results["best_acc"],
     },
     f=model_save_path)
 
 def batchsize_tuning(model: torch.nn.Module,
                loss_fn: torch.nn.Module,
                optimizer: torch.optim.Optimizer,
-               dataset: torchvision.datasets.ImageFolder,
+               dataloader: CustomDataLoader,
                device: torch.device,
                writer: torch.utils.tensorboard.writer):
     batch_size = 8
@@ -340,10 +331,10 @@ def batchsize_tuning(model: torch.nn.Module,
     initial_model_state = model.state_dict()
     initial_optimizer_state = optimizer.state_dict()
     while True:
-        dataloader_dict = create_data_loaders(dataset, ["train", "val", "test"], [0.7, 0.15, 0.15], batch_size, num_workers)
-        dataloader = dataloader_dict["val"]
+        dataloaders = dataloader.create_data_loaders(batch_size, num_workers)
+        val_dataloader = dataloaders[1]
         start = time.time()
-        train_step(model, dataloader, loss_fn, optimizer, device, 0)
+        train_step(model, val_dataloader, loss_fn, optimizer, device, 0)
         end = time.time()
         time_taken = end - start
         writer.add_scalar("batch_size_tuning log2", time_taken, math.log2(batch_size))
@@ -355,5 +346,5 @@ def batchsize_tuning(model: torch.nn.Module,
             batch_size *= 2
         else:
             break
-    return dataloader_dict
+    return dataloaders
     
