@@ -7,6 +7,7 @@ import optuna
 from importlib import reload
 import training.hyperparams
 reload(training.hyperparams)
+from copy import deepcopy
 from training.hyperparams import hyperparams
 from dataloader import CustomDataLoader
 
@@ -22,8 +23,8 @@ def batchsize_tuning(model: torch.nn.Module,
     batch_size = 8
     min_time = float('inf')
     num_workers = os.cpu_count()
-    initial_model_state = model.state_dict()
-    initial_optimizer_state = optimizer.state_dict()
+    initial_model_state = deepcopy(model.state_dict())
+    initial_optimizer_state = deepcopy(optimizer.state_dict())
     while True:
         dataloaders = dataloader.create_data_loaders(batch_size, num_workers)
         val_dataloader = dataloaders[1]
@@ -51,7 +52,7 @@ def optimizer_tuning(model: torch.nn.Module,
             label_names: list,
             writer: torch.utils.tensorboard.writer):
 
-    initial_model_state = model.state_dict()
+    initial_model_state = deepcopy(model.state_dict())
 
     def objective(trial):
         # Reset model
@@ -87,3 +88,4 @@ def optimizer_tuning(model: torch.nn.Module,
     print("Accuracy: {}".format(trial.value))
     print("Best hyperparameters: {}".format(trial.params))
     return study
+           
