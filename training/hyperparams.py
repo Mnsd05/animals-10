@@ -1,6 +1,6 @@
 hyperparams = {
-    "num_epochs": 10,
-    "num_trials": 30,
+    "num_epochs": 2,
+    "num_trials": 2,
     'optimizers': 
     {
         'adam':
@@ -16,5 +16,4 @@ hyperparams = {
             'beta2': (0.8, 0.999),
         },
     },
-
 }

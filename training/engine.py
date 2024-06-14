@@ -179,11 +179,13 @@ def train(model: torch.nn.Module,
                     test_acc: [0.3400, 0.2973]}
     """
     # Create empty results dictionary
-    results = {}
     early_threshold = 5
     best_acc = 0
     best_epoch = 0
     start_epoch = 1
+    results = {"saved_epoch": start_epoch,
+               "best_epoch": best_epoch,
+               "best_acc": best_acc}
 
     if checkpoint is not None:
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -212,11 +214,6 @@ def train(model: torch.nn.Module,
             f"test_loss: {test_loss:.4f} | "
             f"test_acc: {test_acc:.4f}"
         )
-
-        # Update results dictionary
-        results["best_epoch"] = best_epoch
-        results["best_acc"] = best_acc
-        results["saved_epoch"] = epoch
 
         ### New: Experiment tracking ###
         # Add loss results to SummaryWriter
@@ -249,22 +246,28 @@ def train(model: torch.nn.Module,
         writer.add_graph(model=model,
                          # Pass in an example input
                          input_to_model=torch.randn(32, 3, 224, 224).to(device))
+        
+        results["saved_epoch"] = epoch
+        
+        # Save the best model based on test accuracy
+        if test_acc > best_acc:
+            best_acc = test_acc
+            best_epoch = epoch
+            # Update results dictionary
+            results["best_epoch"] = best_epoch
+            results["best_acc"] = best_acc
+            save_model(model=model,
+                   optimizer=optimizer,
+                   results=results,
+                   target_dir=os.path.join(DRIVE_PROJECT_PATH, MODEL_FOLDER),
+                   model_name=f"best_{model.name}.pth")
+            
         # Save the model at the end of each epoch for fault tolerance
         save_model(model=model,
                    optimizer=optimizer,
                    results=results,
                    target_dir=os.path.join(DRIVE_PROJECT_PATH, MODEL_FOLDER),
                    model_name=f"latest_{model.name}.pth")
-        
-        # Save the best model based on test accuracy
-        if test_acc > best_acc:
-            best_acc = test_acc
-            best_epoch = epoch
-            save_model(model=model,
-                   optimizer=optimizer,
-                   results=results,
-                   target_dir=os.path.join(DRIVE_PROJECT_PATH, MODEL_FOLDER),
-                   model_name=f"best_{model.name}.pth")
         
         # Early stopping
         if epoch - best_epoch > early_threshold:
@@ -314,6 +317,3 @@ def save_model(model: torch.nn.Module,
         'best_acc': results["best_acc"],
     },
     f=model_save_path)
-
-
-    
