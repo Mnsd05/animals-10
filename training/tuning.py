@@ -25,6 +25,7 @@ def batchsize_tuning(model: torch.nn.Module,
     num_workers = os.cpu_count()
     initial_model_state = deepcopy(model.state_dict())
     initial_optimizer_state = deepcopy(optimizer.state_dict())
+    min_dataloaders = None
     while True:
         dataloaders = dataloader.create_data_loaders(batch_size, num_workers)
         val_dataloader = dataloaders[1]
@@ -39,9 +40,10 @@ def batchsize_tuning(model: torch.nn.Module,
         if time_taken < min_time:
             min_time = time_taken
             batch_size *= 2
+            min_dataloaders = dataloaders
         else:
             break
-    return dataloaders
+    return min_dataloaders
 
 def optimizer_tuning(model: torch.nn.Module,
             loss_fn: torch.nn.Module,
@@ -88,4 +90,3 @@ def optimizer_tuning(model: torch.nn.Module,
     print("Accuracy: {}".format(trial.value))
     print("Best hyperparameters: {}".format(trial.params))
     return study
-           
